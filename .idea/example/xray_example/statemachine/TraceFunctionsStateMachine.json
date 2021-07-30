@@ -1,0 +1,61 @@
+{
+  "Comment": "A Hello World example with X-ray",
+  "StartAt": "CallTestFunction1",
+  "States": {
+    "CallTestFunction1": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:112757862110:function:TestFunction1",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "Next": "AfterTaskFailed"
+        }
+      ],
+      "Next": "CallTestFunction2"
+    },
+    "CallTestFunction2": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:112757862110:function:TestFunction2",
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "Next": "AfterTaskFailed"
+        }
+      ],
+      "Next": "CallTestFunction3"
+    },
+    "CallTestFunction3": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:112757862110:function:TestFunction3",
+      "TimeoutSeconds": 5,
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.Timeout"
+          ],
+          "Next": "AfterTimeout"
+        },
+        {
+          "ErrorEquals": [
+            "States.TaskFailed"
+          ],
+          "Next": "AfterTaskFailed"
+        }
+      ],
+      "Next": "Succeed"
+    },
+    "Succeed": {
+      "Type": "Succeed"
+    },
+    "AfterTimeout": {
+      "Type": "Fail"
+    },
+    "AfterTaskFailed": {
+      "Type": "Fail"
+    }
+  }
+}
