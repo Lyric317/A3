@@ -10,6 +10,7 @@
        CloudWatchLogsFullAccess
        AWSXrayFullAccess
        AWSLambdaRole
+       AmazonSNSFullAccess
 
    #### b. Lambda Role: "lambda_basic_execution":
    Ensure you select "Lambda" as the target AWS service
@@ -20,3 +21,4 @@
        AWSXrayFullAccess
        AmazonS3FullAccess
        AmazonDynamoDBFullAccess
+       AmazonSNSFullAccess
