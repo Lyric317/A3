@@ -4,7 +4,7 @@
 2. Create DDB table "http-crud-tutorial-items"
 
        Primary partition Key: Id
-3. This project uses API Gateway to call the Lambda function respectively. Ypu can follow the instructions here:  
+3. This project uses API Gateway to call the Lambda function respectively. You can follow the instructions to set up an HTTP API here:  
 
        https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-dynamo-db.html
 
