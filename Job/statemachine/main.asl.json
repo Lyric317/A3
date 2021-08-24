@@ -1,0 +1,280 @@
+{
+  "Comment": "Job",
+  "StartAt": "initializer",
+  "States": {
+    "initializer": {
+      "Type": "Pass",
+      "Next": "Query",
+      "Comment": "placeholder for initializer"
+    },
+    "Query": {
+      "Type": "Map",
+      "Iterator": {
+        "StartAt": "BuildQueryBatches",
+        "States": {
+          "BuildQueryBatches": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
+            "Parameters": {
+              "Payload.$": "$",
+              "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:buildQueryBatches:$LATEST"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 6,
+                "BackoffRate": 2
+              }
+            ],
+            "Next": "RunQuery"
+          },
+          "RunQuery": {
+            "Type": "Map",
+            "ItemsPath": "$.batch_index",
+            "Parameters": {
+              "thread_index.$": "$$.Map.Item.Value",
+              "total.$": "$.total",
+              "batch_size.$": "$.batch_size",
+              "thread_number.$": "$.thread_number",
+              "test-run-id.$": "$$.Execution.Id"
+            },
+            "Iterator": {
+              "StartAt": "QueryOneNamespace",
+              "States": {
+                "QueryOneNamespace": {
+                  "Type": "Task",
+                  "Resource": "arn:aws:states:::lambda:invoke",
+                  "Parameters": {
+                    "Payload.$": "$",
+                    "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:simpleCounter:$LATEST"
+                  },
+                  "Retry": [
+                    {
+                      "ErrorEquals": [
+                        "States.ALL"
+                      ],
+                      "IntervalSeconds": 2,
+                      "MaxAttempts": 3,
+                      "BackoffRate": 2
+                    }
+                  ],
+                  "ResultSelector": {
+                    "total_get.$": "$.Payload.total_get",
+                    "index.$": "$.Payload.index"
+                  },
+                  "ResultPath": "$.result",
+                  "Comment": "a simple counter",
+                  "Next": "GetMore"
+                },
+                "GetMore": {
+                  "Type": "Choice",
+                  "Choices": [
+                    {
+                      "Variable": "$.result.index",
+                      "NumericLessThanPath": "$.total",
+                      "Next": "QueryOneNamespace",
+                      "Comment": "get more if not all docs are got"
+                    }
+                  ],
+                  "Default": "PassTotalNumber"
+                },
+                "PassTotalNumber": {
+                  "Type": "Pass",
+                  "OutputPath": "$.result.total_get",
+                  "End": true
+                }
+              }
+            },
+            "ResultPath": "$.result",
+            "Next": "SumOneNamespace"
+          },
+          "SumOneNamespace": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
+            "Parameters": {
+              "Payload.$": "$",
+              "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:SumOneNamespace:$LATEST"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 6,
+                "BackoffRate": 2
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "ItemsPath": "$.namespaces",
+      "ResultPath": "$.total_list",
+      "Parameters": {
+        "namespace.$": "$$.Map.Item.Value",
+        "batch_size.$": "$.batch_size",
+        "dynamodb_name.$": "$.dynamodb_name",
+        "businese_date.$": "$.businese_date"
+      },
+      "Next": "SumAllNamespaces"
+    },
+    "SumAllNamespaces": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:SumAllNamespaces:$LATEST"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "RetryDecider",
+      "ResultPath": "$.result",
+      "ResultSelector": {
+        "attempts.$": "$.Payload.attempts",
+        "is_enough.$": "$.Payload.is_enough",
+        "should_retry.$": "$.Payload.should_retry",
+        "total_docs.$": "$.Payload.total_docs"
+      }
+    },
+    "RetryDecider": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.result.should_retry",
+          "BooleanEquals": true,
+          "Next": "initializer"
+        },
+        {
+          "And": [
+            {
+              "Variable": "$.result.should_retry",
+              "BooleanEquals": false
+            },
+            {
+              "Variable": "$.result.is_enough",
+              "BooleanEquals": false
+            }
+          ],
+          "Next": "JobFail"
+        }
+      ],
+      "Default": "BuildBatches"
+    },
+    "BuildBatches": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "Payload": {
+          "businese_date.$": "$.businese_date",
+          "total_docs.$": "$.result.total_docs"
+        },
+        "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:CreateBatchesInS3:$LATEST"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "RunTransformation"
+    },
+    "RunTransformation": {
+      "Type": "Map",
+      "Iterator": {
+        "StartAt": "GetBatchInfo",
+        "States": {
+          "GetBatchInfo": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:GetBatchesFromS3:$LATEST",
+              "Payload": {
+                "s3_bucket.$": "$.s3_bucket",
+                "s3_key.$": "$.s3_key",
+                "batch_id.$": "$.batch_id"
+              }
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 6,
+                "BackoffRate": 2
+              }
+            ],
+            "Comment": "get batch info from s3 to further parallel",
+            "ResultSelector": {
+              "Payload.$": "$.Payload"
+            },
+            "ResultPath": "$.stateoutputs.GetBatchInfo",
+            "Next": "RunDistributorStateMachine"
+          },
+          "RunDistributorStateMachine": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution",
+            "Parameters": {
+              "StateMachineArn": "arn:aws:states:us-east-2:066717673947:stateMachine:Distributor",
+              "Input": {
+                "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                "trans_to_run.$": "$.stateoutputs.GetBatchInfo.Payload.trans_to_run",
+                "execution_id.$": "$$.Execution.Id",
+                "Name.$": "States.Format('{}_batch{}',$$.Execution.Name,$['stateoutputs']['GetBatchInfo']['Payload']['batch_number'])"
+              }
+            },
+            "End": true
+          }
+        }
+      },
+      "ItemsPath": "$.batch_index",
+      "Comment": "map to run the transformation",
+      "Parameters": {
+        "batch_id.$": "$$.Map.Item.Value",
+        "trans_run_id.$": "$$.Execution.Id",
+        "s3_bucket.$": "$.s3_bucket",
+        "s3_key.$": "$.s3_key"
+      },
+      "Next": "Pass",
+      "MaxConcurrency": 0
+    },
+    "Pass": {
+      "Type": "Pass",
+      "End": true
+    },
+    "JobFail": {
+      "Type": "Pass",
+      "End": true,
+      "Comment": "placeholder - job fails and send notification to manager"
+    }
+  }
+}
