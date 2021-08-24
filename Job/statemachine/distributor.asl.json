@@ -1,0 +1,93 @@
+{
+  "Comment": "A state machine to distribute the payload and do the transformation",
+  "StartAt": "ProcessPayload",
+  "States": {
+    "ProcessPayload": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:SplitIfRequired:$LATEST"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "ResultSelector": {
+        "Payload.$": "$.Payload"
+      },
+      "Next": "RecurseIfRequired"
+    },
+    "RecurseIfRequired": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.trans_batches",
+          "IsPresent": true,
+          "Comment": "need to recurse",
+          "Next": "RecurseToMoreDistributors"
+        }
+      ],
+      "Default": "RunTransformation"
+    },
+    "RunTransformation": {
+      "Type": "Map",
+      "Iterator": {
+        "StartAt": "RunTrans",
+        "States": {
+          "RunTrans": {
+            "Type": "Pass",
+            "End": true
+          }
+        }
+      },
+      "End": true,
+      "ItemsPath": "$.trans_to_run",
+      "MaxConcurrency": 0,
+      "Parameters": {
+        "trans_data.$": "$$.Map.Item.Value",
+        "execution_id.$": "$.execution_id"
+      }
+    },
+    "RecurseToMoreDistributors": {
+      "Type": "Map",
+      "End": true,
+      "Iterator": {
+        "StartAt": "Recurse",
+        "States": {
+          "Recurse": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution",
+            "Parameters": {
+              "StateMachineArn.$": "$$.StateMachine.Id",
+              "Input": {
+                "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                "trans_to_run.$": "$.trans_batch.trans_to_run",
+                "execution_id.$": "$.execution_id"
+              },
+              "Name.$": "States.Format('{}_{}',$$.Execution.Name,$['trans_batch']['batch_id'])"
+            },
+            "End": true,
+            "ResultSelector": {
+              "ExecName.$": "$$.Execution.Name"
+            }
+          }
+        }
+      },
+      "ItemsPath": "$.trans_batches",
+      "Parameters": {
+        "trans_batch.$": "$$.Map.Item.Value",
+        "execution_id.$": "$.execution_id"
+      }
+    }
+  }
+}
