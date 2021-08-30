@@ -1,5 +1,5 @@
 {
-  "Comment": "Job",
+  "Comment": "State machine for main job",
   "StartAt": "initializer",
   "States": {
     "initializer": {
@@ -151,7 +151,7 @@
       "ResultPath": "$.result",
       "ResultSelector": {
         "attempts.$": "$.Payload.attempts",
-        "is_enough.$": "$.Payload.is_enough",
+        "should_fail.$": "$.Payload.should_fail",
         "should_retry.$": "$.Payload.should_retry",
         "total_docs.$": "$.Payload.total_docs"
       }
@@ -162,19 +162,12 @@
         {
           "Variable": "$.result.should_retry",
           "BooleanEquals": true,
-          "Next": "initializer"
+          "Next": "initializer",
+          "Comment": "retry from beginning"
         },
         {
-          "And": [
-            {
-              "Variable": "$.result.should_retry",
-              "BooleanEquals": false
-            },
-            {
-              "Variable": "$.result.is_enough",
-              "BooleanEquals": false
-            }
-          ],
+          "Variable": "$.result.should_fail",
+          "BooleanEquals": true,
           "Next": "JobFail"
         }
       ],
@@ -242,7 +235,7 @@
           },
           "RunDistributorStateMachine": {
             "Type": "Task",
-            "Resource": "arn:aws:states:::states:startExecution",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
               "StateMachineArn": "arn:aws:states:us-east-2:066717673947:stateMachine:Distributor",
               "Input": {
@@ -265,11 +258,15 @@
         "s3_key.$": "$.s3_key"
       },
       "Next": "Pass",
-      "MaxConcurrency": 0
+      "MaxConcurrency": 0,
+      "ResultPath": null
     },
     "Pass": {
       "Type": "Pass",
-      "End": true
+      "End": true,
+      "Result": {
+        "result": "Done"
+      }
     },
     "JobFail": {
       "Type": "Pass",
