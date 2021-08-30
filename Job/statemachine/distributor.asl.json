@@ -1,5 +1,5 @@
 {
-  "Comment": "A state machine to distribute the payload and do the transformation",
+  "Comment": "A Hello World example of the Amazon States Language using a Pass state",
   "StartAt": "ProcessPayload",
   "States": {
     "ProcessPayload": {
@@ -50,23 +50,22 @@
           }
         }
       },
-      "End": true,
       "ItemsPath": "$.trans_to_run",
       "MaxConcurrency": 0,
       "Parameters": {
         "trans_data.$": "$$.Map.Item.Value",
         "execution_id.$": "$.execution_id"
-      }
+      },
+      "End": true
     },
     "RecurseToMoreDistributors": {
       "Type": "Map",
-      "End": true,
       "Iterator": {
         "StartAt": "Recurse",
         "States": {
           "Recurse": {
             "Type": "Task",
-            "Resource": "arn:aws:states:::states:startExecution",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
               "StateMachineArn.$": "$$.StateMachine.Id",
               "Input": {
@@ -87,6 +86,14 @@
       "Parameters": {
         "trans_batch.$": "$$.Map.Item.Value",
         "execution_id.$": "$.execution_id"
+      },
+      "Next": "ClearResult"
+    },
+    "ClearResult": {
+      "Type": "Pass",
+      "End": true,
+      "Result": {
+        "result": "done"
       }
     }
   }
