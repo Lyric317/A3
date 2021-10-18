@@ -1,0 +1,142 @@
+{
+  "Comment": "State Machine for job",
+  "StartAt": "VerifyInput",
+  "States": {
+    "VerifyInput": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.iteration_count",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.iteration_count",
+              "IsNumeric": true
+            }
+          ],
+          "Next": "InsertJobStatsForInstance"
+        }
+      ],
+      "Default": "GenerateDefaultInput"
+    },
+    "GenerateDefaultInput": {
+      "Type": "Pass",
+      "Parameters": {
+        "iteration_count": 1
+      },
+      "Next": "InsertJobStatsForInstance"
+    },
+    "InsertJobStatsForInstance": {
+      "Type": "Task",
+      "TimeoutSeconds": 300,
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "JobStats",
+        "Item": {
+          "Id": {
+            "S.$": "$$.Execution.Id"
+          },
+          "JobId": {
+            "S.$": "$$.Execution.Id"
+          },
+          "Status": {
+            "S": "Started"
+          },
+          "StartTime": {
+            "S.$": "$$.Execution.StartTime"
+          },
+          "EndTime": {
+            "S": ""
+          },
+          "TotalDocsProcessed": {
+            "N": "0"
+          },
+          "TotalDocsQueried": {
+            "N": "0"
+          },
+          "IterationCount": {
+            "N.$": "States.Format('{}',$.iteration_count)"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "MaxAttempts": 15,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "InitializeNamespacesList"
+    },
+    "InitializeNamespacesList": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:InitializeNamespaceList",
+        "Payload": {
+          "iteration_count.$": "$.iteration_count"
+        }
+      },
+      "TimeoutSeconds": 300,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
+      "ResultSelector": {
+        "namespaces.$": "$.Payload.namespaceList"
+      },
+      "ResultPath": "$.initializerOutput",
+      "Next": "QueryNamespaces"
+    },
+    "QueryNamespaces": {
+      "Type": "Map",
+      "ItemsPath": "$.initializerOutput.namespaces",
+      "ResultPath": "$.total_list",
+      "Parameters": {
+        "namespace.$": "$$.Map.Item.Value"
+      },
+      "Iterator": {
+        "StartAt": "BuildQueryBatches",
+        "States": {
+          "BuildQueryBatches": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "OutputPath": "$.Payload",
+            "Parameters": {
+              "Payload.$": "$",
+              "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:A3BuildQueryBatches"
+            },
+            "TimeoutSeconds": 300,
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 6,
+                "BackoffRate": 2
+              }
+            ],
+            "End": true
+          }
+        }
+      },
+      "End": true
+    }
+  }
+}

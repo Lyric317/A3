@@ -31,7 +31,7 @@ def lambda_handler(event, context):
     #         s3_bucket = os.environ[k]
     
     # Hardcode s3_bucekt for now
-    s3_bucket = 'intermediarys3buckettobuildbatches'
+    s3_bucket = 'buildbatches'
     
     
     # Build the result
