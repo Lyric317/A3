@@ -1,25 +1,27 @@
-# This function will query lex, read the lex ids from DDB to calculate the delta, save delta into S3
+"""
+This function will query lex, read the lex ids from DDB to calculate the delta, save delta into S3
 
-# Query namespace
-# total_docs_in_namespace: total num of docs in namespace
-# max_parallel_executions
-# batch_index
-# batch_size: size for this query
+Query namespace
+total_docs_in_namespace: total num of docs in namespace
+max_parallel_executions
+batch_index
+batch_size: size for this query
 
-# namespace_query_output:
-    # query_from_index: start index for this query
-    # total_docs_queried: so far for the namespace
+namespace_query_output:
+    query_from_index: start index for this query
+    total_docs_queried: so far for the namespace
 
-# "Payload": {
-#   "query_batch_size": 100,
-#   "max_parallel_executions": 2,
-#   "batch_index": 0,
-#   "total_docs_in_namespace": 2100,
-#   "query_namespace_output": {
-#     "total_docs_queried": 100,
-#     "query_from_index": 200
-#   }
-# }
+"Payload": {
+  "query_batch_size": 100,
+  "max_parallel_executions": 2,
+  "batch_index": 0,
+  "total_docs_in_namespace": 2100,
+  "query_namespace_output": {
+    "total_docs_queried": 100,
+    "query_from_index": 200
+  }
+}
+"""
 
 def lambda_handler(event, context):
     batch_index = event['batch_index'] # event.get('batch_index')

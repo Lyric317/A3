@@ -69,33 +69,3 @@ def lambda_handler(event, context):
         'total_docs_in_all_namespaces': total_docs_in_all_namespaces,
         'total_queried_docs_in_all_namespaces': total_queried_docs_in_all_namespaces
    }
-
-
-#     # is_enough = True
-#     # should_retry = False
-#
-#     should_fail = False
-#     should_retry = False
-#
-#     attempts = event.get('result').get('attempts') if 'result' in event.keys() else 0
-#     total_list = event.get('total_list')
-#     total_should_get = 0
-#     total_get = 0
-#
-#     for dic in total_list:
-#         total_should_get += dic.get('total')
-#         total_get += dic.get('total_get')
-#
-#     if total_get/total_should_get < 0.9:
-#         attempts += 1
-#         if attempts >= 3:
-#             should_fail = True
-#         else:
-#             should_retry = True
-#
-#     return {
-#         'attempts': attempts,
-#         'should_retry': should_retry,
-#         'should_fail': should_fail,
-#         'total_docs': total_get
-#     }

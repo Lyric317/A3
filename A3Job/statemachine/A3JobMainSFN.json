@@ -94,17 +94,17 @@
     "UpdateJobStatsForInstance": {
       "Type": "Task",
       "TimeoutSeconds": 15,
-      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
       "Parameters": {
         "TableName": "JobStats",
-        "Item": {
-          "Id": {
-            "S.$": "$$.Execution.Id"
-          },
+        "Key": {
           "JobId": {
             "S.$": "$$.Execution.Id"
-          },
-          "IterationCount": {
+          }
+        },
+        "UpdateExpression": "SET IterationCount = :val1",
+        "ExpressionAttributeValues": {
+          ":val1": {
             "N.$": "States.Format('{}', $.job_iteration_count)"
           }
         }
@@ -159,9 +159,9 @@
         "query_batch_size.$": "$.query_batch_size"
       },
       "Iterator": {
-        "StartAt": "GetTotalDocsInNamespaceAndCreateQueryBatches",
+        "StartAt": "GetTotalDocsInNamespaceAndCreateBatchesForLexQuery",
         "States": {
-          "GetTotalDocsInNamespaceAndCreateQueryBatches": {
+          "GetTotalDocsInNamespaceAndCreateBatchesForLexQuery": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
             "Parameters": {
@@ -198,7 +198,7 @@
               "query_batch_size.$": "$.query_batch_size"
             },
             "ResultPath": "$.query_namespace_in_parallel_output",
-            "Next": "CalculateAndUpdateTotalQueriedDocsInNamespace",
+            "Next": "CalculateAndUpdateQueriedDocsInNamespace",
             "Iterator": {
               "StartAt": "QueryNamespace",
               "States": {
@@ -249,7 +249,7 @@
               }
             }
           },
-          "CalculateAndUpdateTotalQueriedDocsInNamespace": {
+          "CalculateAndUpdateQueriedDocsInNamespace": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
             "Parameters": {
@@ -274,9 +274,9 @@
           }
         }
       },
-      "Next": "CalculatePercentageAndDecideJobRestartVariables"
+      "Next": "CalculatePercentageOfAllQueriedDocs"
     },
-    "CalculatePercentageAndDecideJobRestartVariables": {
+    "CalculatePercentageOfAllQueriedDocs": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
@@ -321,18 +321,48 @@
           "Next": "JobFail"
         }
       ],
-      "Default": "BuildBatches"
+      "Default": "UpdateTotalDocsQueriedInJobStats"
     },
-    "BuildBatches": {
+    "UpdateTotalDocsQueriedInJobStats": {
+      "Type": "Task",
+      "TimeoutSeconds": 15,
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "JobStats",
+        "Key": {
+          "JobId": {
+            "S.$": "$$.Execution.Id"
+          }
+        },
+        "UpdateExpression": "SET TotalDocsQueried = :val1",
+        "ExpressionAttributeValues": {
+          ":val1": {
+            "N.$": "States.Format('{}', $.all_namespace_calculation_output.total_queried_docs_in_all_namespaces)"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "CreateBatchesForDeltaDocs"
+    },
+    "CreateBatchesForDeltaDocs": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "OutputPath": "$.Payload",
       "Parameters": {
         "Payload": {
-          "businese_date.$": "$.businese_date",
-          "total_docs.$": "$.result.total_docs"
+          "max_parallel_executions.$": "$.max_parallel_executions",
+          "execution_name.$": "$$.Execution.Name"
         },
-        "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:CreateBatchesInS3:$LATEST"
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:GetDeltaDocsAndCreateBatches"
       },
       "Retry": [
         {
@@ -342,7 +372,7 @@
             "Lambda.SdkClientException"
           ],
           "IntervalSeconds": 2,
-          "MaxAttempts": 6,
+          "MaxAttempts": 5,
           "BackoffRate": 2
         }
       ],
