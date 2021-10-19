@@ -8,11 +8,27 @@
         {
           "And": [
             {
-              "Variable": "$.iteration_count",
+              "Variable": "$.job_iteration_count",
               "IsPresent": true
             },
             {
-              "Variable": "$.iteration_count",
+              "Variable": "$.job_iteration_count",
+              "IsNumeric": true
+            },
+            {
+              "Variable": "$.max_parallel_executions",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.max_parallel_executions",
+              "IsNumeric": true
+            },
+            {
+              "Variable": "$.query_batch_size",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.query_batch_size",
               "IsNumeric": true
             }
           ],
@@ -24,13 +40,15 @@
     "GenerateDefaultInput": {
       "Type": "Pass",
       "Parameters": {
-        "iteration_count": 1
+        "job_iteration_count": 1,
+        "max_parallel_executions": 2,
+        "query_batch_size": 100
       },
       "Next": "InsertJobStatsForInstance"
     },
     "InsertJobStatsForInstance": {
       "Type": "Task",
-      "TimeoutSeconds": 300,
+      "TimeoutSeconds": 15,
       "Resource": "arn:aws:states:::dynamodb:putItem",
       "Parameters": {
         "TableName": "JobStats",
@@ -57,7 +75,7 @@
             "N": "0"
           },
           "IterationCount": {
-            "N.$": "States.Format('{}',$.iteration_count)"
+            "N.$": "States.Format('{}', $.job_iteration_count)"
           }
         }
       },
@@ -67,19 +85,49 @@
           "ErrorEquals": [
             "States.ALL"
           ],
-          "MaxAttempts": 15,
+          "MaxAttempts": 5,
           "BackoffRate": 2
         }
       ],
-      "Next": "InitializeNamespacesList"
+      "Next": "IdentifyNamespacesToQuery"
     },
-    "InitializeNamespacesList": {
+    "UpdateJobStatsForInstance": {
+      "Type": "Task",
+      "TimeoutSeconds": 15,
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "JobStats",
+        "Item": {
+          "Id": {
+            "S.$": "$$.Execution.Id"
+          },
+          "JobId": {
+            "S.$": "$$.Execution.Id"
+          },
+          "IterationCount": {
+            "N.$": "States.Format('{}', $.job_iteration_count)"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "IdentifyNamespacesToQuery"
+    },
+    "IdentifyNamespacesToQuery": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
         "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:InitializeNamespaceList",
         "Payload": {
-          "iteration_count.$": "$.iteration_count"
+          "job_iteration_count.$": "$.job_iteration_count"
         }
       },
       "TimeoutSeconds": 300,
@@ -91,34 +139,40 @@
             "Lambda.SdkClientException"
           ],
           "IntervalSeconds": 2,
-          "MaxAttempts": 6,
+          "MaxAttempts": 5,
           "BackoffRate": 2
         }
       ],
       "ResultSelector": {
         "namespaces.$": "$.Payload.namespace_list"
       },
-      "ResultPath": "$.namespace_list_to_query_output",
-      "Next": "QueryNamespaces"
+      "ResultPath": "$.namespace_list_to_query",
+      "Next": "QueryEligibleNamespaces"
     },
-    "QueryNamespaces": {
+    "QueryEligibleNamespaces": {
       "Type": "Map",
-      "ItemsPath": "$.namespace_list_to_query_output.namespaces",
-      "ResultPath": "$.namespaces_query_output",
+      "ItemsPath": "$.namespace_list_to_query.namespaces",
+      "ResultPath": "$.namespaces_summary",
       "Parameters": {
-        "namespace.$": "$$.Map.Item.Value"
+        "namespace.$": "$$.Map.Item.Value",
+        "max_parallel_executions.$": "$.max_parallel_executions",
+        "query_batch_size.$": "$.query_batch_size"
       },
       "Iterator": {
-        "StartAt": "BuildQueryBatches",
+        "StartAt": "GetTotalDocsInNamespaceAndCreateQueryBatches",
         "States": {
-          "BuildQueryBatches": {
+          "GetTotalDocsInNamespaceAndCreateQueryBatches": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
-            "OutputPath": "$.Payload",
             "Parameters": {
               "Payload.$": "$",
               "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:A3BuildQueryBatches"
             },
+            "ResultSelector": {
+              "total_docs_in_namespace.$": "$.Payload.total_docs_in_namespace",
+              "batch_index.$": "$.Payload.batch_index"
+            },
+            "ResultPath": "$.namespace_info_and_query_batches",
             "TimeoutSeconds": 300,
             "Retry": [
               {
@@ -128,23 +182,23 @@
                   "Lambda.SdkClientException"
                 ],
                 "IntervalSeconds": 2,
-                "MaxAttempts": 6,
+                "MaxAttempts": 5,
                 "BackoffRate": 2
               }
             ],
-            "Next": "RunQuery"
+            "Next": "QueryNamespaceInParallel"
           },
-          "RunQuery": {
+          "QueryNamespaceInParallel": {
             "Type": "Map",
-            "ItemsPath": "$.batch_index",
+            "ItemsPath": "$.namespace_info_and_query_batches.batch_index",
             "Parameters": {
-              "total_docs_in_namespace.$": "$.total_docs_in_namespace",
+              "total_docs_in_namespace.$": "$.namespace_info_and_query_batches.total_docs_in_namespace",
               "max_parallel_executions.$": "$.max_parallel_executions",
               "batch_index.$": "$$.Map.Item.Value",
-              "batch_size": 500
+              "query_batch_size.$": "$.query_batch_size"
             },
-            "ResultPath": "$.run_query_output",
-            "Next": "CalculateTotalOfQueriedDocsInNamespace",
+            "ResultPath": "$.query_namespace_in_parallel_output",
+            "Next": "CalculateAndUpdateTotalQueriedDocsInNamespace",
             "Iterator": {
               "StartAt": "QueryNamespace",
               "States": {
@@ -159,7 +213,7 @@
                     "total_docs_queried.$": "$.Payload.total_docs_queried",
                     "query_from_index.$": "$.Payload.query_from_index"
                   },
-                  "ResultPath": "$.namespace_query_output",
+                  "ResultPath": "$.query_namespace_output",
                   "TimeoutSeconds": 300,
                   "Retry": [
                     {
@@ -169,39 +223,40 @@
                         "Lambda.SdkClientException"
                       ],
                       "IntervalSeconds": 2,
-                      "MaxAttempts": 6,
+                      "MaxAttempts": 5,
                       "BackoffRate": 2
                     }
                   ],
-                  "Next": "ContinueQueryingNamespace"
+                  "Next": "ShouldContinueQueryingNamespace"
                 },
-                "ContinueQueryingNamespace": {
+                "ShouldContinueQueryingNamespace": {
                   "Type": "Choice",
                   "Choices": [
                     {
                       "Comment": "Check if we need to continue querying namespace if we haven't reached the total docs",
-                      "Variable": "$.namespace_query_output.query_from_index",
+                      "Variable": "$.query_namespace_output.query_from_index",
                       "NumericLessThanPath": "$.total_docs_in_namespace",
                       "Next": "QueryNamespace"
                     }
                   ],
-                  "Default": "PassTotalNumberOfDocsQueried"
+                  "Default": "FilterTotalQueriedDocsPerBatch"
                 },
-                "PassTotalNumberOfDocsQueried": {
+                "FilterTotalQueriedDocsPerBatch": {
                   "Type": "Pass",
-                  "OutputPath": "$.namespace_query_output.total_docs_queried",
+                  "OutputPath": "$.query_namespace_output.total_docs_queried",
                   "End": true
                 }
               }
             }
           },
-          "CalculateTotalOfQueriedDocsInNamespace": {
+          "CalculateAndUpdateTotalQueriedDocsInNamespace": {
             "Type": "Task",
             "Resource": "arn:aws:states:::lambda:invoke",
             "Parameters": {
               "Payload.$": "$",
-              "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:SumOneNamespace:$LATEST"
+              "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CalculateTotalQueriedDocsInNamespace"
             },
+            "OutputPath": "$.Payload",
             "TimeoutSeconds": 300,
             "Retry": [
               {
@@ -211,7 +266,7 @@
                   "Lambda.SdkClientException"
                 ],
                 "IntervalSeconds": 2,
-                "MaxAttempts": 6,
+                "MaxAttempts": 5,
                 "BackoffRate": 2
               }
             ],
@@ -219,7 +274,84 @@
           }
         }
       },
+      "Next": "CalculatePercentageAndDecideJobRestartVariables"
+    },
+    "CalculatePercentageAndDecideJobRestartVariables": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "Payload.$": "$",
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CalculateTotalQueriedDocsInAllNamespaces"
+      },
+      "ResultSelector": {
+        "job_iteration_count.$": "$.Payload.job_iteration_count",
+        "should_fail_job.$": "$.Payload.should_fail_job",
+        "should_retry_job.$": "$.Payload.should_retry_job",
+        "total_docs_in_all_namespaces.$": "$.Payload.total_docs_in_all_namespaces",
+        "total_queried_docs_in_all_namespaces.$": "$.Payload.total_queried_docs_in_all_namespaces"
+      },
+      "ResultPath": "$.all_namespace_calculation_output",
+      "TimeoutSeconds": 300,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "ShouldRetryJob"
+    },
+    "ShouldRetryJob": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.all_namespace_calculation_output.should_retry_job",
+          "BooleanEquals": true,
+          "Next": "UpdateJobStatsForInstance",
+          "Comment": "Retry Job"
+        },
+        {
+          "Variable": "$.all_namespace_calculation_output.should_fail_job",
+          "BooleanEquals": true,
+          "Next": "JobFail"
+        }
+      ],
+      "Default": "BuildBatches"
+    },
+    "BuildBatches": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "OutputPath": "$.Payload",
+      "Parameters": {
+        "Payload": {
+          "businese_date.$": "$.businese_date",
+          "total_docs.$": "$.result.total_docs"
+        },
+        "FunctionName": "arn:aws:lambda:us-east-2:066717673947:function:CreateBatchesInS3:$LATEST"
+      },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 6,
+          "BackoffRate": 2
+        }
+      ],
       "End": true
+    },
+    "JobFail": {
+      "Type": "Pass",
+      "End": true,
+      "Comment": "placeholder - job fails and send notification to manager"
     }
   }
 }
