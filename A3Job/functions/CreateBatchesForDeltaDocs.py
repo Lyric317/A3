@@ -33,6 +33,7 @@ s3_client = boto3.client('s3')
 def lambda_handler(event, context):
 
     # Get all Objects's hash lex id from S3 Bucket JobDailyDelta for the day...
+        # <Date - business_date input>/raw-delta-data/[]
     # Get total delta agreements from the S3 Bucket JobDailyDelta based on the date for the folder name
     total_delta_agreements = 1115
     print("total delta agreements from the JobDailyDelta is {}".format(total_delta_agreements))
@@ -77,8 +78,8 @@ def lambda_handler(event, context):
     print("Writing results to S3")
     # Put the batch info to s3
 
-    # Get the execution name, default to a guid if not provided
-    s3_key = 'execution_input/{}.json'.format(event.get('execution_name', uuid.uuid4()))
+    # Get the execution name
+    s3_key = 'execution_input/{}.json'.format(event.get('execution_name'))
     s3_bucket = "jobdailybatchprocessing"
 
     return_object = {"delta_doc_batches": batches, "batch_index": batch_index, "s3_bucket": s3_bucket, "s3_key": s3_key}

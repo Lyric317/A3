@@ -39,7 +39,7 @@ def lambda_handler(event, context):
         # 1. Query QFC LEX Service based on the query_from_index
         # 2. Scan DDB Agreement Hash table and compare hashes with queried data
         # 3. Filter new / changed hashes
-        # 4. Save to S3 JobDailyDelta
+        # 4. Save to S3 JobDailyDelta with key based on the business_date input
 
     # Pretend to query docs in namespace
     if event.get('total_docs_in_namespace') - query_from_index < batch_size:

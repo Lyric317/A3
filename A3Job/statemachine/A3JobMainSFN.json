@@ -356,7 +356,10 @@
     "CreateBatchesForDeltaDocs": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
-      "OutputPath": "$.Payload",
+      "ResultSelector": {
+        "batch_index.$": "$.Payload.batch_index"
+      },
+      "ResultPath": "$.delta_batches_output",
       "Parameters": {
         "Payload": {
           "max_parallel_executions.$": "$.max_parallel_executions",
@@ -364,6 +367,110 @@
         },
         "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:GetDeltaDocsAndCreateBatches"
       },
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "AgreementDataTransformation"
+    },
+    "AgreementDataTransformation": {
+      "Type": "Map",
+      "ItemsPath": "$.delta_batches_output.batch_index",
+      "ResultPath": null,
+      "Parameters": {
+        "batch_id.$": "$$.Map.Item.Value",
+        "execution_name.$": "$$.Execution.Name"
+      },
+      "Iterator": {
+        "StartAt": "GetDeltaDocsBatchInfo",
+        "States": {
+          "GetDeltaDocsBatchInfo": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::lambda:invoke",
+            "Parameters": {
+              "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:GetDeltaDocBatchesInfo",
+              "Payload.$": "$"
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "Lambda.ServiceException",
+                  "Lambda.AWSLambdaException",
+                  "Lambda.SdkClientException"
+                ],
+                "IntervalSeconds": 2,
+                "MaxAttempts": 5,
+                "BackoffRate": 2
+              }
+            ],
+            "ResultSelector": {
+              "batch_number.$": "$.Payload.batch_number",
+              "delta_docs_to_run.$": "$.Payload.delta_docs_to_run"
+            },
+            "ResultPath": "$.delta_docs_batch_info",
+            "End": true
+          }
+        }
+      },
+      "Next": "UpdateAgreementHashes"
+    },
+    "UpdateAgreementHashes": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:UpdateAgreementHashes"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "CreateJobDailyA3Data"
+    },
+    "CreateJobDailyA3Data": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CreateJobDailyA3Data"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "CleanupDailyJob"
+    },
+    "CleanupDailyJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CleanupDailyJob"
+      },
+      "ResultPath": null,
       "Retry": [
         {
           "ErrorEquals": [
