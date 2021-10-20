@@ -454,7 +454,12 @@
           }
         }
       },
-      "Next": "UpdateAgreementHashes"
+      "Next": "CalculateTotalTransformedDocs"
+    },
+    "CalculateTotalTransformedDocs": {
+      "Type": "Pass",
+      "Next": "UpdateAgreementHashes",
+      "Comment": "Should we calculate that the transformed docs are certain % from the delta docs before proceeding?"
     },
     "UpdateAgreementHashes": {
       "Type": "Task",
@@ -483,7 +488,10 @@
       "Parameters": {
         "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CreateJobDailyA3Data"
       },
-      "ResultPath": null,
+      "ResultSelector": {
+        "total_documents_processed.$": "$.Payload.total_documents_processed"
+      },
+      "ResultPath": "$.CreateJobDailyA3DataOutput",
       "Retry": [
         {
           "ErrorEquals": [
@@ -513,6 +521,39 @@
             "Lambda.SdkClientException"
           ],
           "IntervalSeconds": 2,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "UpdateJobStats"
+    },
+    "UpdateJobStats": {
+      "Type": "Task",
+      "TimeoutSeconds": 15,
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "JobStats",
+        "Key": {
+          "JobId": {
+            "S.$": "$$.Execution.Id"
+          }
+        },
+        "UpdateExpression": "SET TotalDocsProcessed = :val1, EndTime = :val2",
+        "ExpressionAttributeValues": {
+          ":val1": {
+            "N.$": "States.Format('{}', $.CreateJobDailyA3DataOutput.total_documents_processed)"
+          },
+          ":val2": {
+            "S.$": "States.Format('{}', $$.State.EnteredTime)"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
           "MaxAttempts": 5,
           "BackoffRate": 2
         }

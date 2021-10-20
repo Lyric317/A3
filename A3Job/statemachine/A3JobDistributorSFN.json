@@ -57,7 +57,7 @@
                 "delta_docs_to_run.$": "$.delta_docs_batch.delta_docs_to_run"
               },
               "StateMachineArn.$": "$$.StateMachine.Id",
-              "Name.$": "States.Format('{}_batch{}', $$.Execution.Name, $['delta_docs_batch']['batch_id'])"
+              "Name.$": "States.Format('{}_batch_{}', $$.Execution.Name, $.delta_docs_batch.batch_id)"
             },
             "ResultSelector": {"ExecName.$": "$$.Execution.Name"},
             "Retry": [
