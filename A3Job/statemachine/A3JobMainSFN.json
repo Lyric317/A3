@@ -387,7 +387,8 @@
       "ResultPath": null,
       "Parameters": {
         "batch_id.$": "$$.Map.Item.Value",
-        "execution_name.$": "$$.Execution.Name"
+        "execution_name.$": "$$.Execution.Name",
+        "max_parallel_executions.$": "$.max_parallel_executions"
       },
       "Iterator": {
         "StartAt": "GetDeltaDocsBatchInfo",
@@ -416,6 +417,39 @@
               "delta_docs_to_run.$": "$.Payload.delta_docs_to_run"
             },
             "ResultPath": "$.delta_docs_batch_info",
+            "Next": "RunDistributorStateMachine"
+          },
+          "RunDistributorStateMachine": {
+            "Type": "Task",
+            "Resource": "arn:aws:states:::states:startExecution.sync:2",
+            "Parameters": {
+              "StateMachineArn": "arn:aws:states:us-east-1:112757862110:stateMachine:A3JobDistributorSFN",
+              "Name.$": "States.Format('{}_batch_{}', $$.Execution.Name, $.delta_docs_batch_info.batch_number)",
+              "Input": {
+                "max_parallel_executions.$": "$.max_parallel_executions",
+                "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
+                "execution_id.$": "$$.Execution.Id",
+                "delta_docs_to_run.$": "$.delta_docs_batch_info.delta_docs_to_run"
+              }
+            },
+            "Retry": [
+              {
+                "ErrorEquals": [
+                  "StepFunctions.ExecutionAlreadyExistsException"
+                ],
+                "IntervalSeconds": 1,
+                "BackoffRate": 5,
+                "MaxAttempts": 1
+              },
+              {
+                "ErrorEquals": [
+                  "States.ALL"
+                ],
+                "IntervalSeconds": 1,
+                "BackoffRate": 2,
+                "MaxAttempts": 5
+              }
+            ],
             "End": true
           }
         }
