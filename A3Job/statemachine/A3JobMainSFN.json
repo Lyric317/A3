@@ -30,6 +30,14 @@
             {
               "Variable": "$.query_batch_size",
               "IsNumeric": true
+            },
+            {
+              "Variable": "$.business_date",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.business_date",
+              "IsString": true
             }
           ],
           "Next": "InsertJobStatsForInstance"
@@ -42,7 +50,8 @@
       "Parameters": {
         "job_iteration_count": 1,
         "max_parallel_executions": 2,
-        "query_batch_size": 100
+        "query_batch_size": 100,
+        "business_date.$": "$$.Execution.StartTime"
       },
       "Next": "InsertJobStatsForInstance"
     },
@@ -156,7 +165,8 @@
       "Parameters": {
         "namespace.$": "$$.Map.Item.Value",
         "max_parallel_executions.$": "$.max_parallel_executions",
-        "query_batch_size.$": "$.query_batch_size"
+        "query_batch_size.$": "$.query_batch_size",
+        "business_date.$": "$.business_date"
       },
       "Iterator": {
         "StartAt": "GetTotalDocsInNamespaceAndCreateBatchesForLexQuery",
@@ -195,7 +205,8 @@
               "total_docs_in_namespace.$": "$.namespace_info_and_query_batches.total_docs_in_namespace",
               "max_parallel_executions.$": "$.max_parallel_executions",
               "batch_index.$": "$$.Map.Item.Value",
-              "query_batch_size.$": "$.query_batch_size"
+              "query_batch_size.$": "$.query_batch_size",
+              "business_date.$": "$.business_date"
             },
             "ResultPath": "$.query_namespace_in_parallel_output",
             "Next": "CalculateAndUpdateQueriedDocsInNamespace",
@@ -321,9 +332,9 @@
           "Next": "JobFail"
         }
       ],
-      "Default": "UpdateTotalDocsQueriedInJobStats"
+      "Default": "UpdateJobStatsTotalDocsQueried"
     },
-    "UpdateTotalDocsQueriedInJobStats": {
+    "UpdateJobStatsTotalDocsQueried": {
       "Type": "Task",
       "TimeoutSeconds": 15,
       "Resource": "arn:aws:states:::dynamodb:updateItem",
@@ -362,6 +373,7 @@
       "ResultPath": "$.delta_batches_output",
       "Parameters": {
         "Payload": {
+          "business_date.$": "$.business_date",
           "max_parallel_executions.$": "$.max_parallel_executions",
           "execution_name.$": "$$.Execution.Name"
         },
@@ -388,7 +400,8 @@
       "Parameters": {
         "batch_id.$": "$$.Map.Item.Value",
         "execution_name.$": "$$.Execution.Name",
-        "max_parallel_executions.$": "$.max_parallel_executions"
+        "max_parallel_executions.$": "$.max_parallel_executions",
+        "business_date.$": "$.business_date"
       },
       "Iterator": {
         "StartAt": "GetDeltaDocsBatchInfo",
@@ -427,6 +440,7 @@
               "Name.$": "States.Format('{}_batch_{}', $$.Execution.Name, $.delta_docs_batch_info.batch_number)",
               "Input": {
                 "max_parallel_executions.$": "$.max_parallel_executions",
+                "business_date.$": "$.business_date",
                 "AWS_STEP_FUNCTIONS_STARTED_BY_EXECUTION_ID.$": "$$.Execution.Id",
                 "execution_id.$": "$$.Execution.Id",
                 "delta_docs_to_run.$": "$.delta_docs_batch_info.delta_docs_to_run"
@@ -450,6 +464,20 @@
                 "MaxAttempts": 5
               }
             ],
+            "Catch": [
+              {
+                "ErrorEquals": [
+                  "States.TaskFailed"
+                ],
+                "ResultPath": "$.RunDistributorStateMachineOutput",
+                "Next": "CaptureFailedTransformation"
+              }
+            ],
+            "End": true
+          },
+          "CaptureFailedTransformation": {
+            "Type": "Pass",
+            "Result": "Done",
             "End": true
           }
         }
@@ -486,7 +514,10 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
-        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CreateJobDailyA3Data"
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CreateJobDailyA3Data",
+        "Payload": {
+          "business_date.$": "$.business_date"
+        }
       },
       "ResultSelector": {
         "total_documents_processed.$": "$.Payload.total_documents_processed"
@@ -510,6 +541,9 @@
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
+        "Payload": {
+          "business_date.$": "$.business_date"
+        },
         "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CleanupDailyJob"
       },
       "ResultPath": null,
