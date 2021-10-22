@@ -7,6 +7,15 @@ import json
     It will then proceed to create the batching strategy for Docs transformation
     It will save the batch strategy to S3 for future usage
 
+    Input:
+    {
+      "s3_bucket_name": "jobdailybatchprocessing",
+      "max_parallel_executions": 2,
+      "execution_name": "6ebf18c2-28c4-975f-3590-d6022229e2ba",
+      "business_date": "10/20/2021"
+    }
+
+    Generates:
     {
         "delta_doc_batches": [
             {
@@ -83,7 +92,7 @@ def lambda_handler(event, context):
 
     # Get the execution name
     s3_key = 'execution_input/{}.json'.format(event.get('execution_name'))
-    s3_bucket = "jobdailybatchprocessing"
+    s3_bucket = event.get('s3_bucket_name')
 
     return_object = {"delta_doc_batches": batches, "batch_index": batch_index, "s3_bucket": s3_bucket, "s3_key": s3_key}
 

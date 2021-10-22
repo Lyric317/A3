@@ -5,6 +5,16 @@ import json
     This function loads the delta_doc_batches data from S3, filters for the corresponding batch_id
     and returns the data for further parallel processing
 
+    Input:
+    {
+      "s3_bucket_name": "jobdailybatchprocessing",
+      "batch_id": 0,
+      "execution_name": "6ebf18c2-28c4-975f-3590-d6022229e2ba",
+      "max_parallel_executions": 2,
+      "business_date": "10/20/2021"
+    }
+
+    Gets object from S3:
     {
       "batch_number": 0,
       "delta_docs_to_run": [
@@ -33,7 +43,7 @@ def lambda_handler(event, context):
 
     s3_key = 'execution_input/{}.json'.format(event.get('execution_name'))
     print("s3_key is {}".format(s3_key))
-    s3_bucket = "jobdailybatchprocessing"
+    s3_bucket = s3_bucket = event.get('s3_bucket_name')
 
     # Load the full data from S3
     response = s3_client.get_object(

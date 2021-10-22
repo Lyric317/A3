@@ -344,7 +344,8 @@
         "Payload": {
           "business_date.$": "$.business_date",
           "max_parallel_executions.$": "$.max_parallel_executions",
-          "execution_name.$": "$$.Execution.Name"
+          "execution_name.$": "$$.Execution.Name",
+          "s3_bucket_name": "jobdailybatchprocessing"
         },
         "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:GetDeltaDocsAndCreateBatches"
       },
@@ -380,7 +381,13 @@
             "Resource": "arn:aws:states:::lambda:invoke",
             "Parameters": {
               "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:GetDeltaDocBatchesInfo",
-              "Payload.$": "$"
+              "Payload": {
+                "batch_id.$": "$.batch_id",
+                "execution_name.$": "$$.Execution.Name",
+                "max_parallel_executions.$": "$.max_parallel_executions",
+                "business_date.$": "$.business_date",
+                "s3_bucket_name": "jobdailybatchprocessing"
+              }
             },
             "Retry": [
               {
