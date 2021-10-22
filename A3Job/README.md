@@ -38,11 +38,11 @@ https://medium.com/@shweta2202/step-functions-preventing-duplicate-executions-a4
 
 https://docs.aws.amazon.com/step-functions/latest/apireference/API_StartExecution.html
 
-#### SFN ddb:
+#### SFN ddb / kms:
 
-    Jobstats: PutItem / updateItem
+    Jobstats: PutItem / updateItem / KMS
 
-#### Lambdas with ddb / s3 / inet:
+#### Lambdas with ddb / s3 / inet/ kms:
 GetTotalDocsInNamespaceAndCreateBatchesForLexQuery:
 
     VPCE interface to Inet
