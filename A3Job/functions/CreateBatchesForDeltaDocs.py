@@ -3,28 +3,31 @@ import boto3
 import json
 
 """
-This function will fetch S3 bucket to calculate the total delta docs we've found
-It will then proceed to create the batching strategy for Docs transformation
-It will save the batch strategy to S3 for future usage
+    This function will fetch S3 bucket to calculate the total delta docs we've found
+    It will then proceed to create the batching strategy for Docs transformation
+    It will save the batch strategy to S3 for future usage
 
-{
-    "delta_doc_batches": [
-        {
-          "batch_number": 0,
-          "delta_docs_to_run": [
+    {
+        "delta_doc_batches": [
             {
-              "delta_doc_number": 0,
-              "lex_id": "69988902-c227-41a0-824c-7a3996d799a0"
-            },
-            {
-              "delta_doc_number": 40,
-              "lex_id": "0d2fcf11-c41a-4bf6-ac07-c6eb7d2994ef"
-            },
-          ]
-        }
-    ],
-    "batch_index": [0...39]
-}
+              "batch_number": 0,
+              "delta_docs_to_run": [
+                {
+                  "delta_doc_number": 0,
+                  "lex_id": "69988902-c227-41a0-824c-7a3996d799a0"
+                },
+                {
+                  "delta_doc_number": 40,
+                  "lex_id": "0d2fcf11-c41a-4bf6-ac07-c6eb7d2994ef"
+                },
+              ]
+            }
+        ],
+        "batch_index": [0...39]
+    }
+
+    S3 VPCE / KMS -> JobDailyDelta -> Read? we need to read only the kays within the folder of the business_date
+    S3 VPCE / KMS -> jobdailybatchprocessing -> Write putObject
 """
 
 # Initialize the S3 client
@@ -33,7 +36,7 @@ s3_client = boto3.client('s3')
 def lambda_handler(event, context):
 
     # Get all Objects's hash lex id from S3 Bucket JobDailyDelta for the day...
-        # <Date - business_date input>/raw-delta-data/[]
+        # <Date - business_date input>/[]
     # Get total delta agreements from the S3 Bucket JobDailyDelta based on the date for the folder name
     total_delta_agreements = 1115
     print("total delta agreements from the JobDailyDelta is {}".format(total_delta_agreements))

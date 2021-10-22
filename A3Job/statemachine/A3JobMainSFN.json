@@ -8,14 +8,6 @@
         {
           "And": [
             {
-              "Variable": "$.job_iteration_count",
-              "IsPresent": true
-            },
-            {
-              "Variable": "$.job_iteration_count",
-              "IsNumeric": true
-            },
-            {
               "Variable": "$.max_parallel_executions",
               "IsPresent": true
             },
@@ -38,37 +30,44 @@
             {
               "Variable": "$.business_date",
               "IsString": true
+            },
+            {
+              "Variable": "$.namespaces",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.query_percentage_success",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.query_percentage_success",
+              "IsNumeric": true
+            },
+            {
+              "Variable": "$.docs_transformation_percentage_success",
+              "IsPresent": true
+            },
+            {
+              "Variable": "$.docs_transformation_percentage_success",
+              "IsNumeric": true
             }
           ],
-          "Next": "InsertJobStatsForInstance"
+          "Next": "InsertInitialJobStatsForInstance"
         }
       ],
-      "Default": "GenerateDefaultInput"
+      "Default": "JobFail"
     },
-    "GenerateDefaultInput": {
-      "Type": "Pass",
-      "Parameters": {
-        "job_iteration_count": 1,
-        "max_parallel_executions": 2,
-        "query_batch_size": 100,
-        "business_date.$": "$$.Execution.StartTime"
-      },
-      "Next": "InsertJobStatsForInstance"
-    },
-    "InsertJobStatsForInstance": {
+    "InsertInitialJobStatsForInstance": {
       "Type": "Task",
       "TimeoutSeconds": 15,
       "Resource": "arn:aws:states:::dynamodb:putItem",
       "Parameters": {
         "TableName": "JobStats",
         "Item": {
-          "Id": {
-            "S.$": "$$.Execution.Id"
-          },
           "JobId": {
             "S.$": "$$.Execution.Id"
           },
-          "Status": {
+          "JobStatus": {
             "S": "Started"
           },
           "StartTime": {
@@ -84,7 +83,7 @@
             "N": "0"
           },
           "IterationCount": {
-            "N.$": "States.Format('{}', $.job_iteration_count)"
+            "N": "1"
           }
         }
       },
@@ -98,9 +97,9 @@
           "BackoffRate": 2
         }
       ],
-      "Next": "IdentifyNamespacesToQuery"
+      "Next": "QueryEligibleNamespaces"
     },
-    "UpdateJobStatsForInstance": {
+    "UpdateIterationCountInJobStats": {
       "Type": "Task",
       "TimeoutSeconds": 15,
       "Resource": "arn:aws:states:::dynamodb:updateItem",
@@ -111,10 +110,10 @@
             "S.$": "$$.Execution.Id"
           }
         },
-        "UpdateExpression": "SET IterationCount = :val1",
+        "UpdateExpression": "SET IterationCount = IterationCount + :num",
         "ExpressionAttributeValues": {
-          ":val1": {
-            "N.$": "States.Format('{}', $.job_iteration_count)"
+          ":num": {
+            "N": "1"
           }
         }
       },
@@ -128,46 +127,19 @@
           "BackoffRate": 2
         }
       ],
-      "Next": "IdentifyNamespacesToQuery"
-    },
-    "IdentifyNamespacesToQuery": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::lambda:invoke",
-      "Parameters": {
-        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:InitializeNamespaceList",
-        "Payload": {
-          "job_iteration_count.$": "$.job_iteration_count"
-        }
-      },
-      "TimeoutSeconds": 300,
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "Lambda.ServiceException",
-            "Lambda.AWSLambdaException",
-            "Lambda.SdkClientException"
-          ],
-          "IntervalSeconds": 2,
-          "MaxAttempts": 5,
-          "BackoffRate": 2
-        }
-      ],
-      "ResultSelector": {
-        "namespaces.$": "$.Payload.namespace_list"
-      },
-      "ResultPath": "$.namespace_list_to_query",
       "Next": "QueryEligibleNamespaces"
     },
     "QueryEligibleNamespaces": {
       "Type": "Map",
-      "ItemsPath": "$.namespace_list_to_query.namespaces",
-      "ResultPath": "$.namespaces_summary",
+      "ItemsPath": "$.namespaces",
       "Parameters": {
         "namespace.$": "$$.Map.Item.Value",
         "max_parallel_executions.$": "$.max_parallel_executions",
         "query_batch_size.$": "$.query_batch_size",
-        "business_date.$": "$.business_date"
+        "business_date.$": "$.business_date",
+        "execution_id.$": "$$.Execution.Id"
       },
+      "ResultPath": "$.namespaces",
       "Iterator": {
         "StartAt": "GetTotalDocsInNamespaceAndCreateBatchesForLexQuery",
         "States": {
@@ -178,11 +150,7 @@
               "Payload.$": "$",
               "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:A3BuildQueryBatches"
             },
-            "ResultSelector": {
-              "total_docs_in_namespace.$": "$.Payload.total_docs_in_namespace",
-              "batch_index.$": "$.Payload.batch_index"
-            },
-            "ResultPath": "$.namespace_info_and_query_batches",
+            "OutputPath": "$.Payload",
             "TimeoutSeconds": 300,
             "Retry": [
               {
@@ -192,7 +160,7 @@
                   "Lambda.SdkClientException"
                 ],
                 "IntervalSeconds": 2,
-                "MaxAttempts": 5,
+                "MaxAttempts": 2,
                 "BackoffRate": 2
               }
             ],
@@ -200,15 +168,15 @@
           },
           "QueryNamespaceInParallel": {
             "Type": "Map",
-            "ItemsPath": "$.namespace_info_and_query_batches.batch_index",
+            "ItemsPath": "$.namespace.batch_index",
             "Parameters": {
-              "total_docs_in_namespace.$": "$.namespace_info_and_query_batches.total_docs_in_namespace",
-              "max_parallel_executions.$": "$.max_parallel_executions",
+              "total_docs.$": "$.namespace.total_docs",
+              "max_parallel_query_executions.$": "$.max_parallel_query_executions",
               "batch_index.$": "$$.Map.Item.Value",
               "query_batch_size.$": "$.query_batch_size",
               "business_date.$": "$.business_date"
             },
-            "ResultPath": "$.query_namespace_in_parallel_output",
+            "ResultPath": "$.total_queried_data_per_batch",
             "Next": "CalculateAndUpdateQueriedDocsInNamespace",
             "Iterator": {
               "StartAt": "QueryNamespace",
@@ -224,7 +192,7 @@
                     "total_docs_queried.$": "$.Payload.total_docs_queried",
                     "query_from_index.$": "$.Payload.query_from_index"
                   },
-                  "ResultPath": "$.query_namespace_output",
+                  "ResultPath": "$.namespace_query_summary",
                   "TimeoutSeconds": 300,
                   "Retry": [
                     {
@@ -245,8 +213,8 @@
                   "Choices": [
                     {
                       "Comment": "Check if we need to continue querying namespace if we haven't reached the total docs",
-                      "Variable": "$.query_namespace_output.query_from_index",
-                      "NumericLessThanPath": "$.total_docs_in_namespace",
+                      "Variable": "$.namespace_query_summary.query_from_index",
+                      "NumericLessThanPath": "$.total_docs",
                       "Next": "QueryNamespace"
                     }
                   ],
@@ -254,7 +222,7 @@
                 },
                 "FilterTotalQueriedDocsPerBatch": {
                   "Type": "Pass",
-                  "OutputPath": "$.query_namespace_output.total_docs_queried",
+                  "OutputPath": "$.namespace_query_summary.total_docs_queried",
                   "End": true
                 }
               }
@@ -285,9 +253,9 @@
           }
         }
       },
-      "Next": "CalculatePercentageOfAllQueriedDocs"
+      "Next": "ValidateNamespacesQueryingProcess"
     },
-    "CalculatePercentageOfAllQueriedDocs": {
+    "ValidateNamespacesQueryingProcess": {
       "Type": "Task",
       "Resource": "arn:aws:states:::lambda:invoke",
       "Parameters": {
@@ -299,9 +267,10 @@
         "should_fail_job.$": "$.Payload.should_fail_job",
         "should_retry_job.$": "$.Payload.should_retry_job",
         "total_docs_in_all_namespaces.$": "$.Payload.total_docs_in_all_namespaces",
-        "total_queried_docs_in_all_namespaces.$": "$.Payload.total_queried_docs_in_all_namespaces"
+        "total_queried_docs_in_all_namespaces.$": "$.Payload.total_queried_docs_in_all_namespaces",
+        "namespaces": "$.Payload.namespaces_to_re_run"
       },
-      "ResultPath": "$.all_namespace_calculation_output",
+      "ResultPath": "$.namespaces_querying_process_validation",
       "TimeoutSeconds": 300,
       "Retry": [
         {
@@ -315,26 +284,26 @@
           "BackoffRate": 2
         }
       ],
-      "Next": "ShouldRetryJob"
+      "Next": "ShouldRetryNamespaceQueries"
     },
-    "ShouldRetryJob": {
+    "ShouldRetryNamespaceQueries": {
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.all_namespace_calculation_output.should_retry_job",
+          "Variable": "$.namespaces_querying_process_validation.should_retry_job",
           "BooleanEquals": true,
-          "Next": "UpdateJobStatsForInstance",
+          "Next": "UpdateIterationCountInJobStats",
           "Comment": "Retry Job"
         },
         {
-          "Variable": "$.all_namespace_calculation_output.should_fail_job",
+          "Variable": "$.namespaces_querying_process_validation.should_fail_job",
           "BooleanEquals": true,
           "Next": "JobFail"
         }
       ],
-      "Default": "UpdateJobStatsTotalDocsQueried"
+      "Default": "UpdateTotalDocsQueriedInJobStats"
     },
-    "UpdateJobStatsTotalDocsQueried": {
+    "UpdateTotalDocsQueriedInJobStats": {
       "Type": "Task",
       "TimeoutSeconds": 15,
       "Resource": "arn:aws:states:::dynamodb:updateItem",
@@ -348,7 +317,7 @@
         "UpdateExpression": "SET TotalDocsQueried = :val1",
         "ExpressionAttributeValues": {
           ":val1": {
-            "N.$": "States.Format('{}', $.all_namespace_calculation_output.total_queried_docs_in_all_namespaces)"
+            "N.$": "States.Format('{}', $.namespaces_querying_process_validation.total_queried_docs_in_all_namespaces)"
           }
         }
       },
@@ -370,7 +339,7 @@
       "ResultSelector": {
         "batch_index.$": "$.Payload.batch_index"
       },
-      "ResultPath": "$.delta_batches_output",
+      "ResultPath": "$.delta_docs_batches_distribution",
       "Parameters": {
         "Payload": {
           "business_date.$": "$.business_date",
@@ -391,11 +360,11 @@
           "BackoffRate": 2
         }
       ],
-      "Next": "AgreementDataTransformation"
+      "Next": "DeltaDocsDataTransformation"
     },
-    "AgreementDataTransformation": {
+    "DeltaDocsDataTransformation": {
       "Type": "Map",
-      "ItemsPath": "$.delta_batches_output.batch_index",
+      "ItemsPath": "$.delta_docs_batches_distribution.batch_index",
       "ResultPath": null,
       "Parameters": {
         "batch_id.$": "$$.Map.Item.Value",
@@ -430,9 +399,9 @@
               "delta_docs_to_run.$": "$.Payload.delta_docs_to_run"
             },
             "ResultPath": "$.delta_docs_batch_info",
-            "Next": "RunDistributorStateMachine"
+            "Next": "RunDocTransformationInDistributorSFN"
           },
-          "RunDistributorStateMachine": {
+          "RunDocTransformationInDistributorSFN": {
             "Type": "Task",
             "Resource": "arn:aws:states:::states:startExecution.sync:2",
             "Parameters": {
@@ -464,20 +433,6 @@
                 "MaxAttempts": 5
               }
             ],
-            "Catch": [
-              {
-                "ErrorEquals": [
-                  "States.TaskFailed"
-                ],
-                "ResultPath": "$.RunDistributorStateMachineOutput",
-                "Next": "CaptureFailedTransformation"
-              }
-            ],
-            "End": true
-          },
-          "CaptureFailedTransformation": {
-            "Type": "Pass",
-            "Result": "Done",
             "End": true
           }
         }
@@ -485,9 +440,25 @@
       "Next": "CalculateTotalTransformedDocs"
     },
     "CalculateTotalTransformedDocs": {
-      "Type": "Pass",
-      "Next": "UpdateAgreementHashes",
-      "Comment": "Should we calculate that the transformed docs are certain % from the delta docs before proceeding?"
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke",
+      "Parameters": {
+        "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CalculateTotalTransformedDocs"
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "Lambda.ServiceException",
+            "Lambda.AWSLambdaException",
+            "Lambda.SdkClientException"
+          ],
+          "IntervalSeconds": 2,
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "UpdateAgreementHashes"
     },
     "UpdateAgreementHashes": {
       "Type": "Task",
@@ -522,7 +493,7 @@
       "ResultSelector": {
         "total_documents_processed.$": "$.Payload.total_documents_processed"
       },
-      "ResultPath": "$.CreateJobDailyA3DataOutput",
+      "ResultPath": "$.delta_docs_processed_info",
       "Retry": [
         {
           "ErrorEquals": [
@@ -559,9 +530,9 @@
           "BackoffRate": 2
         }
       ],
-      "Next": "UpdateJobStats"
+      "Next": "UpdateJobTerminationFieldsInJobStats"
     },
-    "UpdateJobStats": {
+    "UpdateJobTerminationFieldsInJobStats": {
       "Type": "Task",
       "TimeoutSeconds": 15,
       "Resource": "arn:aws:states:::dynamodb:updateItem",
@@ -572,13 +543,16 @@
             "S.$": "$$.Execution.Id"
           }
         },
-        "UpdateExpression": "SET TotalDocsProcessed = :val1, EndTime = :val2",
+        "UpdateExpression": "SET TotalDocsProcessed = :val1, EndTime = :val2, JobStatus = :val3",
         "ExpressionAttributeValues": {
           ":val1": {
-            "N.$": "States.Format('{}', $.CreateJobDailyA3DataOutput.total_documents_processed)"
+            "N.$": "States.Format('{}', $.delta_docs_processed_info.total_documents_processed)"
           },
           ":val2": {
             "S.$": "States.Format('{}', $$.State.EnteredTime)"
+          },
+          ":val3": {
+            "S": "Completed"
           }
         }
       },

@@ -18,6 +18,8 @@ import json
         },
       ]
     }
+
+    S3 VPCE / KMS -> jobdailybatchprocessing -> Read getObject
 """
 
 # Initialize the s3 client
