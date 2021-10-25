@@ -14,7 +14,7 @@
     6. Set a iterator_count variable and make it accessible for next time...
 
 
-    Input:
+    Input 1st time:
     {
       "max_parallel_executions": 2,
       "query_batch_size": 1000,
@@ -43,73 +43,69 @@
         }
       ]
     }
+
+    Input from 2 re-try onwards:
+    {
+      "max_parallel_executions": 2,
+      "query_batch_size": 1000,
+      "business_date": "10/20/2021",
+      "query_percentage_success": 0.9,
+      "job_iteration_count": 2,
+      "should_fail_job": false,
+      "should_retry_job": true,
+      "total_docs_in_all_namespaces": 4200,
+      "total_queried_docs_in_all_namespaces": 4200,
+      "namespaces": [
+        {
+          "namespace": "mac",
+          "total_docs": 0,
+          "total_docs_queried": 0
+        },
+        {
+          "namespace": "docman",
+          "total_docs": 0,
+          "total_docs_queried": 0
+        }
+      ]
+    }
+
+    90% 7560
 """
 
 
 def lambda_handler(event, context):
-    # Calculate the total docs available in namespaces that were just queried
-    total_docs_in_all_namespaces = sum(namespace.get('total_docs') for namespace in event.get('namespaces'))
-    total_queried_docs_in_all_namespaces = sum(namespace.get('total_docs_queried') for namespace in event.get('namespaces'))
+  # Calculate the total docs available in namespaces that were just queried and sum them with existing value if available
+  total_docs_in_all_namespaces = event.get('total_docs_in_all_namespaces', 0) + sum(namespace.get('total_docs') for namespace in event.get('namespaces'))
+  total_queried_docs_in_all_namespaces = event.get('total_queried_docs_in_all_namespaces', 0) + sum(namespace.get('total_docs_queried') for namespace in event.get('namespaces'))
 
-    should_retry_job = False
-    should_fail_job = False
+  should_retry_job = False
+  should_fail_job = False
 
-    namespaces_to_re_run = []
-    job_iteration_count = event.get('job_iteration_count', 1)
-    if (job_iteration_count == 1):
-        if total_queried_docs_in_all_namespaces / total_docs_in_all_namespaces < event.get('query_percentage_success'): #> 0.9:
-            # namespaces_to_re_run = [n for n in event.get('namespaces') if n['total_docs_queried'] / n['total_docs'] > 0.9]
-            namespaces_to_re_run = [n for n in event.get('namespaces') if n['total_docs_queried'] / n['total_docs'] < event.get('query_percentage_success')]
-            print(namespaces_to_re_run)
+  job_iteration_count = event.get('job_iteration_count', 1)
+  namespaces_to_re_run = event.get('namespaces')
 
-            # TODO: substract the total_docs_queried from total_queried_docs_in_all_namespaces
-            # TODO: substract the total_docs from total_docs_in_all_namespaces
-            for n in namespaces_to_re_run:
-                n['total_docs_queried'] = 0
-                n['total_docs'] = 0
-
-            job_iteration_count += 1
-            if job_iteration_count >= 4:
-                should_fail_job = True
-            else:
-                should_retry_job = True
+  if total_queried_docs_in_all_namespaces / total_docs_in_all_namespaces < event.get('query_percentage_success'): #> 0.9:
+    job_iteration_count += 1
+    if job_iteration_count >= 4:
+      should_fail_job = True
     else:
-        total_event.get('total_docs_in_all_namespaces')
-    return {
-        'job_iteration_count': job_iteration_count,
-        'should_fail_job': should_fail_job,
-        'should_retry_job': should_retry_job,
-        'total_docs_in_all_namespaces': total_docs_in_all_namespaces,
-        'total_queried_docs_in_all_namespaces': total_queried_docs_in_all_namespaces,
-        'namespaces': namespaces_to_re_run
-   }
+      should_retry_job = True
+      namespaces_to_re_run = [n for n in event.get('namespaces') if n['total_docs_queried'] / n['total_docs'] < event.get('query_percentage_success')]
+      print(namespaces_to_re_run)
 
+      for n in namespaces_to_re_run:
+          total_docs_in_all_namespaces -= n['total_docs']
+          total_queried_docs_in_all_namespaces -= n['total_docs_queried']
+          n['total_docs_queried'] = 0
+          n['total_docs'] = 0
 
-#     # is_enough = True
-#     # should_retry = False
-#
-#     should_fail = False
-#     should_retry = False
-#
-#     attempts = event.get('result').get('attempts') if 'result' in event.keys() else 0
-#     total_list = event.get('total_list')
-#     total_should_get = 0
-#     total_get = 0
-#
-#     for dic in total_list:
-#         total_should_get += dic.get('total')
-#         total_get += dic.get('total_get')
-#
-#     if total_get/total_should_get < 0.9:
-#         attempts += 1
-#         if attempts >= 3:
-#             should_fail = True
-#         else:
-#             should_retry = True
-#
-#     return {
-#         'attempts': attempts,
-#         'should_retry': should_retry,
-#         'should_fail': should_fail,
-#         'total_docs': total_get
-#     }
+  # Replace namespace node and enrich output
+  return {
+    **event,
+    'job_iteration_count': job_iteration_count,
+    'should_fail_job': should_fail_job,
+    'should_retry_job': should_retry_job,
+    'total_docs_in_all_namespaces': total_docs_in_all_namespaces,
+    'total_queried_docs_in_all_namespaces': total_queried_docs_in_all_namespaces,
+    'namespaces': namespaces_to_re_run
+  }

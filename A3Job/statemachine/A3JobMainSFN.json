@@ -262,15 +262,7 @@
         "Payload.$": "$",
         "FunctionName": "arn:aws:lambda:us-east-1:112757862110:function:CalculateTotalQueriedDocsInAllNamespaces"
       },
-      "ResultSelector": {
-        "job_iteration_count.$": "$.Payload.job_iteration_count",
-        "should_fail_job.$": "$.Payload.should_fail_job",
-        "should_retry_job.$": "$.Payload.should_retry_job",
-        "total_docs_in_all_namespaces.$": "$.Payload.total_docs_in_all_namespaces",
-        "total_queried_docs_in_all_namespaces.$": "$.Payload.total_queried_docs_in_all_namespaces",
-        "namespaces": "$.Payload.namespaces_to_re_run"
-      },
-      "ResultPath": "$.namespaces_querying_process_validation",
+      "OutputPath": "$.Payload",
       "TimeoutSeconds": 300,
       "Retry": [
         {
@@ -290,13 +282,13 @@
       "Type": "Choice",
       "Choices": [
         {
-          "Variable": "$.namespaces_querying_process_validation.should_retry_job",
+          "Variable": "$.should_retry_job",
           "BooleanEquals": true,
           "Next": "UpdateIterationCountInJobStats",
           "Comment": "Retry Job"
         },
         {
-          "Variable": "$.namespaces_querying_process_validation.should_fail_job",
+          "Variable": "$.should_fail_job",
           "BooleanEquals": true,
           "Next": "UpdateJobStatusInJobStats"
         }
@@ -317,7 +309,7 @@
         "UpdateExpression": "SET TotalDocsQueried = :val1",
         "ExpressionAttributeValues": {
           ":val1": {
-            "N.$": "States.Format('{}', $.namespaces_querying_process_validation.total_queried_docs_in_all_namespaces)"
+            "N.$": "States.Format('{}', $.total_queried_docs_in_all_namespaces)"
           }
         }
       },
