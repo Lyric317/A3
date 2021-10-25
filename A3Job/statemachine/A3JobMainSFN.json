@@ -1,7 +1,49 @@
 {
   "Comment": "State Machine for job",
-  "StartAt": "VerifyInput",
+  "StartAt": "InsertInitialJobStatsForInstance",
   "States": {
+    "InsertInitialJobStatsForInstance": {
+      "Type": "Task",
+      "TimeoutSeconds": 15,
+      "Resource": "arn:aws:states:::dynamodb:putItem",
+      "Parameters": {
+        "TableName": "JobStats",
+        "Item": {
+          "JobId": {
+            "S.$": "$$.Execution.Id"
+          },
+          "JobStatus": {
+            "S": "STARTED"
+          },
+          "StartTime": {
+            "S.$": "$$.Execution.StartTime"
+          },
+          "EndTime": {
+            "S": ""
+          },
+          "TotalDocsProcessed": {
+            "N": "0"
+          },
+          "TotalDocsQueried": {
+            "N": "0"
+          },
+          "IterationCount": {
+            "N": "1"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "VerifyInput"
+    },
     "VerifyInput": {
       "Type": "Choice",
       "Choices": [
@@ -52,52 +94,10 @@
               "IsNumeric": true
             }
           ],
-          "Next": "InsertInitialJobStatsForInstance"
+          "Next": "QueryEligibleNamespaces"
         }
       ],
-      "Default": "UpdateJobStatusInJobStats"
-    },
-    "InsertInitialJobStatsForInstance": {
-      "Type": "Task",
-      "TimeoutSeconds": 15,
-      "Resource": "arn:aws:states:::dynamodb:putItem",
-      "Parameters": {
-        "TableName": "JobStats",
-        "Item": {
-          "JobId": {
-            "S.$": "$$.Execution.Id"
-          },
-          "JobStatus": {
-            "S": "Started"
-          },
-          "StartTime": {
-            "S.$": "$$.Execution.StartTime"
-          },
-          "EndTime": {
-            "S": ""
-          },
-          "TotalDocsProcessed": {
-            "N": "0"
-          },
-          "TotalDocsQueried": {
-            "N": "0"
-          },
-          "IterationCount": {
-            "N": "1"
-          }
-        }
-      },
-      "ResultPath": null,
-      "Retry": [
-        {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
-          "MaxAttempts": 5,
-          "BackoffRate": 2
-        }
-      ],
-      "Next": "QueryEligibleNamespaces"
+      "Default": "UpdateJobStatusFailureInJobStats"
     },
     "UpdateIterationCountInJobStats": {
       "Type": "Task",
@@ -290,7 +290,7 @@
         {
           "Variable": "$.should_fail_job",
           "BooleanEquals": true,
-          "Next": "UpdateJobStatusInJobStats"
+          "Next": "UpdateJobStatusFailureInJobStats"
         }
       ],
       "Default": "UpdateTotalDocsQueriedInJobStats"
@@ -551,7 +551,7 @@
             "S.$": "States.Format('{}', $$.State.EnteredTime)"
           },
           ":val3": {
-            "S": "Completed"
+            "S": "COMPLETED"
           }
         }
       },
@@ -567,7 +567,7 @@
       ],
       "End": true
     },
-    "UpdateJobStatusInJobStats": {
+    "UpdateJobStatusFailureInJobStats": {
       "Type": "Task",
       "TimeoutSeconds": 15,
       "Resource": "arn:aws:states:::dynamodb:updateItem",
@@ -578,10 +578,13 @@
             "S.$": "$$.Execution.Id"
           }
         },
-        "UpdateExpression": "SET JobStatus = :val1",
+        "UpdateExpression": "SET JobStatus = :val1, EndTime = :val2",
         "ExpressionAttributeValues": {
           ":val1": {
-            "S": "Failed"
+            "S": "FAILED"
+          },
+          ":val2": {
+            "S.$": "States.Format('{}', $$.State.EnteredTime)"
           }
         }
       },
