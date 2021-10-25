@@ -55,7 +55,7 @@
           "Next": "InsertInitialJobStatsForInstance"
         }
       ],
-      "Default": "JobFail"
+      "Default": "UpdateJobStatusInJobStats"
     },
     "InsertInitialJobStatsForInstance": {
       "Type": "Task",
@@ -298,7 +298,7 @@
         {
           "Variable": "$.namespaces_querying_process_validation.should_fail_job",
           "BooleanEquals": true,
-          "Next": "JobFail"
+          "Next": "UpdateJobStatusInJobStats"
         }
       ],
       "Default": "UpdateTotalDocsQueriedInJobStats"
@@ -575,9 +575,40 @@
       ],
       "End": true
     },
+    "UpdateJobStatusInJobStats": {
+      "Type": "Task",
+      "TimeoutSeconds": 15,
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName": "JobStats",
+        "Key": {
+          "JobId": {
+            "S.$": "$$.Execution.Id"
+          }
+        },
+        "UpdateExpression": "SET JobStatus = :val1",
+        "ExpressionAttributeValues": {
+          ":val1": {
+            "S": "Failed"
+          }
+        }
+      },
+      "ResultPath": null,
+      "Retry": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "MaxAttempts": 5,
+          "BackoffRate": 2
+        }
+      ],
+      "Next": "JobFail"
+    },
     "JobFail": {
-      "Type": "Pass",
-      "End": true,
+      "Type": "Fail",
+      "Cause": "Unsatisfactory job data",
+      "Error": "A3 Job Failure",
       "Comment": "placeholder - job fails and send notification to manager"
     }
   }
