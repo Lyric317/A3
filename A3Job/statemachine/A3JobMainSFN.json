@@ -174,7 +174,8 @@
               "max_parallel_query_executions.$": "$.max_parallel_query_executions",
               "batch_index.$": "$$.Map.Item.Value",
               "query_batch_size.$": "$.query_batch_size",
-              "business_date.$": "$.business_date"
+              "business_date.$": "$.business_date",
+              "namespace.$": "$.namespace.namespace"
             },
             "ResultPath": "$.total_queried_data_per_batch",
             "Next": "CalculateAndUpdateQueriedDocsInNamespace",
