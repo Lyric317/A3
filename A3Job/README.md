@@ -3,7 +3,7 @@
     {
         "max_parallel_executions": 2,
         "query_batch_size": 1000,
-        "business_date": "10/20/2021",
+        "business_date": "10-20-2021",
         "query_percentage_success": 0.9,
         "docs_transformation_percentage_success": 0.9,
         "namespaces": [
