@@ -87,6 +87,7 @@ UpdateAgreementHashes:
 CleanupDailyJob:
 
     S3 VPCE / KMS -> JobDailyDelta delete whole folder based on the business_date
+    S3 VPCE / KMS -> jobdailybatchprocessing delete whole folder based on the business_date
 
 #### Other Lambdas:
 ValidateNamespacesQueryingProcess
